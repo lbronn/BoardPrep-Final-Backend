@@ -50,14 +50,15 @@ INSTALLED_APPS = [
     'Mocktest',
     'Discussion',
     'rest_framework',
-
-    'django_ckeditor_5',
+    'storages',
+    'django_ckeditor_5', 
     'ckeditor',
     'ckeditor_uploader',
 ]
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -65,7 +66,6 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-
 ]
 
 REST_FRAMEWORK = {
@@ -90,8 +90,13 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 CKEDITOR_UPLOAD_PATH = 'uploads/'
 CKEDITOR_IMAGE_BACKEND = "pillow"
-SITE_URL = 'http://localhost:8000'
-DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
+SITE_URL = 'https://' + os.environ.get('WEBSITE_HOSTNAME', 'localhost:8000')
+
+AZURE_ACCOUNT_NAME = os.environ.get('AZURE_ACCOUNT_NAME')
+AZURE_ACCOUNT_KEY = os.environ.get('AZURE_ACCOUNT_KEY')
+AZURE_CONTAINER = os.environ.get('AZURE_CONTAINER')
+
+DEFAULT_FILE_STORAGE = 'storages.backends.azure_storage.AzureStorage'
 
 
 TEMPLATES = [
@@ -112,6 +117,13 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'backend.wsgi.application'
 
+SECRET_KEY = os.environ.get('SECRET')
+ALLOWED_HOSTS = [os.environ.get('WEBSITE_HOSTNAME')]
+CSRF_TRUSTED_ORIGINS = ['https://' + os.environ.get('WEBSITE_HOSTNAME', 'localhost:8000')]
+DEBUG = True
+
+DEFAULT_FILE_STORAGE = 'storages.backends.azure_storage.AzureStorage'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
@@ -119,14 +131,10 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'boardprep',
-        'USER': 'root',
-        'PASSWORD': '',
-        'HOST': '127.0.0.1',
-        'PORT': '3306',
-        'OPTIONS': {
-            'init_command': 'SET sql_mode="STRICT_TRANS_TABLES"'
-        }
+        'NAME': os.environ.get('AZURE_MYSQL_NAME'),
+        'HOST': os.environ.get('AZURE_MYSQL_HOST'),
+        'USER': os.environ.get('AZURE_MYSQL_USER'),
+        'PASSWORD': os.environ.get('AZURE_MYSQL_PASSWORD'),
     }
 }
 

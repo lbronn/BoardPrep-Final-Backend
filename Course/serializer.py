@@ -86,12 +86,11 @@ class SyllabusSerializer(serializers.ModelSerializer):
 
 
 class CourseListSerializer(serializers.ModelSerializer):
-    hasMocktest = serializers.SerializerMethodField()
     syllabus = SyllabusSerializer(read_only=True)
 
     class Meta:
         model = Course
-        fields = ['course_id', 'course_title', 'short_description', 'image', 'syllabus', 'is_published', 'hasMocktest']
+        fields = ['course_id', 'course_title', 'short_description', 'image', 'syllabus', 'is_published']
 
     def create(self, validated_data):
         course = Course.objects.create(**validated_data)

@@ -86,11 +86,12 @@ class SyllabusSerializer(serializers.ModelSerializer):
 
 
 class CourseListSerializer(serializers.ModelSerializer):
+    hasMocktest = serializers.SerializerMethodField()
     syllabus = SyllabusSerializer(read_only=True)
 
     class Meta:
         model = Course
-        fields = ['course_id', 'course_title', 'short_description', 'image', 'syllabus', 'is_published']
+        fields = ['course_id', 'course_title', 'short_description', 'image', 'syllabus', 'is_published', 'hasMocktest']
 
     def create(self, validated_data):
         course = Course.objects.create(**validated_data)
@@ -99,7 +100,7 @@ class CourseListSerializer(serializers.ModelSerializer):
         return course
 
     def get_hasMocktest(self, obj):
-        return obj.hasMocktest
+        return obj.has_mock_test()
 
 
 def generate_syllabus_id(course):

@@ -4,7 +4,7 @@ from .settings import BASE_DIR
 
 
 SECRET_KEY = os.environ.get('SECRET')
-ALLOWED_HOSTS = [os.environ.get('WEBSITE_HOSTNAME')]
+ALLOWED_HOSTS = [os.environ.get('WEBSITE_HOSTNAME'), os.environ.get('GODADDY_HOSTNAME', 'boardprep-backend.com')]
 CSRF_TRUSTED_ORIGINS = ['https://' + os.environ.get('WEBSITE_HOSTNAME', 'localhost:8000')]
 DEBUG = True
 

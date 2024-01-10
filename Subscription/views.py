@@ -72,11 +72,12 @@ def stripe_webhook(request):
     payload = request.body
     sig_header = request.META['HTTP_STRIPE_SIGNATURE']
     event = None
+    whsec_key = 'whsec_XoGexQArzaOtGi8A0Wter3hrF9H5BOkj'
 
     try:
         event = stripe.Webhook.construct_event(
-            payload, sig_header, stripe.api_key
-        )
+            payload, sig_header, whsec_key
+        ) 
     except ValueError:
         return JsonResponse({'status': 'invalid payload'}, status=400)
     except stripe.error.SignatureVerificationError:

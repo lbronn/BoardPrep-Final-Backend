@@ -13,17 +13,17 @@ from django.core.files.storage import FileSystemStorage
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from django.db import transaction, models
+from storages.backends.azure_storage import AzureStorage
 
 
 @api_view(['POST'])
 @csrf_exempt
-#@permission_classes([IsAuthenticated])  # Require authentication
 def upload_image(request):
     if request.method == 'POST' and request.FILES['upload']:
         upload = request.FILES['upload']
-        fs = FileSystemStorage()
-        filename = fs.save(upload.name, upload)
-        uploaded_file_url = fs.url(filename)
+        azure_storage = AzureStorage()
+        filename = azure_storage.save(upload.name, upload)
+        uploaded_file_url = azure_storage.url(filename)
         return JsonResponse({'url': uploaded_file_url})
     return JsonResponse({'error': 'Failed to upload file'}, status=400)
 

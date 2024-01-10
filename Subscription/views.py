@@ -13,6 +13,7 @@ from User.models import User
 from django.shortcuts import redirect
 from django.utils.crypto import get_random_string
 import time
+import os
 
 from django.conf import settings
 stripe.api_key = settings.STRIPE_SECRET_KEY
@@ -45,9 +46,9 @@ class UserViewSet(viewsets.ModelViewSet):
             },
             client_reference_id=user_name,
             success_url=request.build_absolute_uri(
-                f'http://localhost:3000/success'
+                f'{os.environ.get("GODADDY_FRONTEND")}/success'
             ),
-            cancel_url=request.build_absolute_uri('http://localhost:3000/payment')
+            cancel_url=request.build_absolute_uri(f'{os.environ.get("GODADDY_FRONTEND")}/payment')
         )
         return Response({'session_id': session.id})
 

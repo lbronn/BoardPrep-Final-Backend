@@ -50,7 +50,7 @@ INSTALLED_APPS = [
     'Mocktest',
     'Discussion',
     'rest_framework',
-    'storages',
+    # 'storages', -- for deployment (dont erase)
     'django_ckeditor_5', 
     'ckeditor',
     'ckeditor_uploader',
@@ -77,8 +77,19 @@ REST_FRAMEWORK = {
 
 
 CORS_ORIGIN_ALLOW_ALL = True
+
+# remove after testing
+CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_CREDENTIALS = True
+
+# remove after testing
+CORS_ALLOW_HEADERS = [
+    'authorization',
+    'content-type',
+]
+
 CORS_ALLOWED_ORIGINS = [
-    "https://boardprep.vercel.app",
+    # "https://boardprep.vercel.app", -- for deployment (dont erase)
     "http://localhost:3000",
     # ... other allowed origins ...
 ]
@@ -91,14 +102,18 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 CKEDITOR_UPLOAD_PATH = 'uploads/'
 CKEDITOR_IMAGE_BACKEND = "pillow"
-SITE_URL = 'https://' + os.environ.get('WEBSITE_HOSTNAME', 'localhost:8000')
+# remove after testing
+SITE_URL = 'http://localhost:8000'
+DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
+# SITE_URL = 'https://' + os.environ.get('WEBSITE_HOSTNAME', 'localhost:8000') -- for deployment (dont erase)
 
+""" -- for deployment (dont erase)
 AZURE_ACCOUNT_NAME = os.environ.get('AZURE_ACCOUNT_NAME')
 AZURE_ACCOUNT_KEY = os.environ.get('AZURE_ACCOUNT_KEY')
 AZURE_CONTAINER = os.environ.get('AZURE_CONTAINER')
 
 DEFAULT_FILE_STORAGE = 'storages.backends.azure_storage.AzureStorage'
-
+"""
 
 TEMPLATES = [
     {
@@ -118,6 +133,10 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'backend.wsgi.application'
 
+# Database
+# https://docs.djangoproject.com/en/4.2/ref/settings/#databases
+
+""" -- for deployment (dont erase)
 SECRET_KEY = os.environ.get('SECRET')
 ALLOWED_HOSTS = [os.environ.get('WEBSITE_HOSTNAME'), os.environ.get('GODADDY_HOSTNAME', 'boardprep-backend.com')]
 CSRF_TRUSTED_ORIGINS = ['https://' + os.environ.get('WEBSITE_HOSTNAME', 'localhost:8000')]
@@ -125,9 +144,6 @@ DEBUG = True
 
 DEFAULT_FILE_STORAGE = 'storages.backends.azure_storage.AzureStorage'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-
-# Database
-# https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
 DATABASES = {
     'default': {
@@ -138,8 +154,25 @@ DATABASES = {
         'PASSWORD': os.environ.get('AZURE_MYSQL_PASSWORD'),
     }
 }
+"""
+# remove after testing
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': 'boardprep',
+        'USER': 'root',
+        'PASSWORD': '',
+        'HOST': '127.0.0.1',
+        'PORT': '3306',
+        'OPTIONS': {
+            'init_command': 'SET sql_mode="STRICT_TRANS_TABLES"'
+        }
+    }
+}
 
-STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY')
+# remove after testing
+STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', 'sk_test_51OKTa5IqhJdy9d5WdauhRZMnPyLF69FK634SNfovUNs3iYUSzEJ3v1abIk9tqJYAIWf15ydGhhumWZr70HPJx6dQ00gRsv52xj')
+# STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY') -- for deployment (dont erase)
 
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators

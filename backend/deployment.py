@@ -1,3 +1,4 @@
+""" -- for deployment (dont erase)
 import os 
 from .settings import *
 from .settings import BASE_DIR
@@ -40,4 +41,5 @@ DATABASES = {
         'USER': os.environ.get('AZURE_MYSQL_USER'),
         'PASSWORD': os.environ.get('AZURE_MYSQL_PASSWORD'),
     }
-}
+} 
+"""

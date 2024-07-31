@@ -3,7 +3,7 @@ from django.urls import path, include, re_path
 from rest_framework import routers
 from django.conf import settings
 from django.conf.urls.static import static
-from Course.views import CourseListViewSet, CourseDetailViewSet, SyllabusViewSet, LessonViewSet, FileUploadViewSet, PageViewSet
+from Course.views import CourseListViewSet, CourseDetailViewSet, SyllabusViewSet, LessonViewSet, FileUploadViewSet, PageViewSet, ExerciseViewSet
 from Class.views import ClassViewSet, PostViewSet, CommentViewSet, JoinRequestViewSet, ActivityViewSet, SubmissionViewSet, AttachmentViewSet
 from Mocktest.views import MockTestViewSet, MockQuestionsViewSet, MockTestScoresViewSet, DifficultyViewSet, submit_mocktest
 from User.views import StudentViewSet, TeacherViewSet
@@ -33,6 +33,7 @@ router.register(r'activities', ActivityViewSet, basename='activities')
 router.register(r'submissions', SubmissionViewSet, basename='submissions')
 router.register(r'attachments', AttachmentViewSet)
 router.register(r'pages', PageViewSet, basename='page')
+router.register(r'exercises', ExerciseViewSet, basename='exercises')
 
 
 #pagkuha og indibidwal nga mga kurso

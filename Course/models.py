@@ -48,3 +48,53 @@ class FileUpload(models.Model):
     file = models.FileField(upload_to='uploads/')
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
+class Exercise(models.Model):
+    lesson = models.ForeignKey(Lesson, on_delete=models.CASCADE, blank=True, null=True)
+    exerciseID = models.BigAutoField(primary_key=True)
+    exerciseName = models.CharField(max_length=200)
+    
+    def __str__(self):
+        return self.exerciseName
+    
+class ExerciseQuestions(models.Model):
+    exercise = models.ForeignKey(Exercise, on_delete=models.CASCADE, related_name='exercisequestions')
+    question = models.TextField(max_length=512)
+    choiceA = models.CharField(max_length=255, verbose_name="A")
+    choiceB = models.CharField(max_length=255, verbose_name="B")
+    choiceC = models.CharField(max_length=255, verbose_name="C")
+    choiceD = models.CharField(max_length=255, verbose_name="D")
+    subject = models.CharField(max_length=255)
+    correctAnswer = models.CharField(max_length=255, verbose_name="Correct Answer")
+    
+    def __str__(self):
+        return f"{self.question} - {self.subject}"
+    
+class ExerciseScores(models.Model):
+    exerciseScoreID = models.BigAutoField(primary_key=True)
+    exercise_id = models.ForeignKey('Exercise', on_delete=models.CASCADE, related_name='exercise_scores')
+    student = models.ForeignKey('User.Student', on_delete=models.CASCADE, related_name='studentexercise_scores')
+    score = models.FloatField(null=False)
+    feedback = models.TextField(null=False)
+    exerciseDateTaken = models.DateField(auto_now_add=True)
+    totalQuestions = models.IntegerField(default=0)
+    correct_questions = models.ManyToManyField(
+        'ExerciseQuestions',
+        through='CorrectExerciseQuestions',
+        related_name='correct_in_exercises'
+    )
+    
+    class Meta:
+        unique_together = ['exercise_id', 'student']
+    
+    def __str__(self):
+        return f"{self.student} - {self.exercise_id}"
+    
+class CorrectExerciseQuestions(models.Model):
+    exercise_score = models.ForeignKey(ExerciseScores, on_delete=models.CASCADE)
+    exercisequestion = models.ForeignKey(ExerciseQuestions, on_delete=models.CASCADE)
+    
+    class Meta:
+        unique_together = ('exercise_score', 'exercisequestion')
+    
+    def __str__(self):
+        return f"{self.exercise_score} - {self.exercisequestion}"

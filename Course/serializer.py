@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from bs4 import BeautifulSoup
 from django.conf import settings
-from Course.models import Course, Syllabus, Lesson,  Page, FileUpload
+from Course.models import Course, Syllabus, Lesson,  Page, FileUpload, Exercise, ExerciseQuestions, ExerciseScores, CorrectExerciseQuestions
 from datetime import datetime
 import time
 
@@ -11,8 +11,57 @@ class PageSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
+class ExerciseQuestionsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ExerciseQuestions
+        fields = '__all__'
+
+
+class CorrectExerciseQuestionsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CorrectExerciseQuestions
+        fields = '__all__'
+
+
+class ExerciseScoresSerializer(serializers.ModelSerializer):
+    studentName = serializers.SerializerMethodField()
+    correctquestions = CorrectExerciseQuestionsSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ExerciseScores
+        fields = (
+            'exerciseScoreID',
+            'exercise_id',
+            'student',
+            'score',
+            'exerciseDateTaken',
+            'totalQuestions',
+            'studentName',
+            'feedback',
+            'correctquestions',
+        )
+
+    def to_representation(self, instance):
+        representation = super(ExerciseScoresSerializer, self).to_representation(instance)
+        representation['exerciseName'] = instance.exercise_id.exerciseName if instance.exercise_id else None
+        representation['feedback'] = instance.feedback
+        return representation
+
+    def get_studentName(self, obj):
+        return f"{obj.student.first_name} {obj.student.last_name}"
+
+
+class ExerciseSerializer(serializers.ModelSerializer):
+    exercisequestions = ExerciseQuestionsSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Exercise
+        fields = '__all__'
+
+
 class LessonSerializer(serializers.ModelSerializer):
     pages = PageSerializer(many=True, read_only=True)
+    exercises = ExerciseSerializer(many=True, read_only=True)
 
     class Meta:
         model = Lesson
@@ -121,5 +170,5 @@ class CourseDetailSerializer(serializers.ModelSerializer):
         syllabus_id = generate_syllabus_id(course)  # Use the function
         Syllabus.objects.create(course=course, syllabus_id=syllabus_id)
         return course
-
-
+    
+    

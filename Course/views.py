@@ -1,22 +1,23 @@
-# views.py
-import os, environ
+import os
+import environ
 from django.db.models import Exists, OuterRef, F
-from rest_framework import viewsets, status
-from rest_framework.decorators import action, parser_classes
+from rest_framework import viewsets, status, parsers
+from rest_framework.decorators import action, api_view, permission_classes, parser_classes
 from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
 from .models import Course, Lesson, Syllabus, Page, FileUpload, Exercise, ExerciseQuestions, ExerciseScores, CorrectExerciseQuestions
 from Mocktest.models import MockTest
-from User.models import Student
+from User.models import Student, User
 from Course.serializer import CourseListSerializer, CourseDetailSerializer, SyllabusSerializer, LessonSerializer, FileUploadSerializer, PageSerializer, ExerciseSerializer, ExerciseQuestionsSerializer, ExerciseScoresSerializer
 from django.http import JsonResponse
+from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
 from django.core.files.storage import FileSystemStorage
-from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
-from django.db import transaction, models
+from django.db import transaction
 from storages.backends.azure_storage import AzureStorage
 from openai import OpenAI
+from bs4 import BeautifulSoup
 
 
 @api_view(['POST'])
@@ -38,7 +39,6 @@ class CourseListViewSet(viewsets.ModelViewSet):
         queryset = super().get_queryset()
         queryset = queryset.annotate(hasMocktest=Exists(MockTest.objects.filter(course=OuterRef('pk'))))
         return queryset
-
 
     @action(detail=False, methods=['get'], url_path='check_id/(?P<course_id>[^/.]+)')
     def check_course_id(self, request, course_id=None):
@@ -129,111 +129,6 @@ class LessonViewSet(viewsets.ModelViewSet):
         serializer = ExerciseSerializer(exercises, many=True)
         return Response(serializer.data)
     
-class ExerciseViewSet(viewsets.ModelViewSet):
-    queryset = Exercise.objects.all()
-    serializer_class = ExerciseSerializer
-
-    def generate_new_questions(self, lesson, exercise):
-        env = environ.Env(
-            DEBUG=(bool, False)
-        )
-        BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
-        client = OpenAI(
-            api_key=env('OPENAI_API_KEY'),
-        )
-
-        try:
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": "You are Preppy, BoardPrep's Engineering Companion and an excellent and critical engineer, tasked with creating exercise questions based on the lesson provided. In creating the exercise questions, you don't mind the student's capability, whether he or she is a beginner or an expert, instead, you must focus on creating questions that will help the student understand the lesson better and in varying difficulties, easy, medium, or hard questions."},
-                    {"role": "user", "content": f"This course is mainly about Integral Calculus. Based on this lesson: {lesson.lesson_title} - {lesson.description}\n\nPlease generate 12 questions of varying difficulty for this lesson that ensures the student can fully understand the lesson better."}
-                ]
-            )
-            questions = response.choices[0].message.content.strip().split("\n\n")
-
-            for question_data in questions:
-                question_lines = question_data.split("\n")
-                question_text = question_lines[0]
-                choices = {line.split(". ")[0]: line.split(". ")[1] for line in question_lines[1:5]}
-                correct_answer = question_lines[5].split(": ")[1]
-
-                ExerciseQuestions.objects.create(
-                    exercise=exercise,
-                    question=question_text,
-                    choiceA=choices['A'],
-                    choiceB=choices['B'],
-                    choiceC=choices['C'],
-                    choiceD=choices['D'],
-                    subject="Integral Calculus", 
-                    correctAnswer=correct_answer
-                )
-
-        except Exception as e:
-            return Response({"Error in generating questions": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
-    @action(detail=True, methods=['post'], url_path='generate_questions')
-    def generate_questions(self, request, pk=None):
-        lesson = get_object_or_404(Lesson, pk=pk)
-        exercise = Exercise.objects.get_or_create(lesson=lesson, exerciseName=f"{lesson.lesson_title} Exercise")
-
-        ExerciseQuestions.objects.filter(exercise=exercise).delete()
-        try:
-            self.generate_new_questions(lesson, exercise)
-            return Response({"message": "Questions generated and saved successfully."}, status=status.HTTP_201_CREATED)
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    @action(detail=True, methods=['post'], url_path='submit_exercise')
-    def submit_exercise(self, request, pk=None):
-        exercise = get_object_or_404(Exercise, pk=pk)
-        student = get_object_or_404(Student, user__username=request.data.get('username'))
-        answers = request.data.get('answers', {})
-
-        correct_answers = ExerciseQuestions.objects.filter(exercise=exercise).values_list('id', 'correctAnswer')
-        correct_answers_dict = {str(question_id): correct for question_id, correct in correct_answers}
-
-        score = sum(answer == correct_answers_dict.get(str(question_id)) for question_id, answer in answers.items())
-        total_questions = len(correct_answers)
-        passing_score = 10 
-
-        if score >= passing_score:
-            feedback = "Congratulations, you passed the exercise!"
-            passed = True
-        else:
-            feedback = "You did not pass the exercise. Please try again."
-            passed = False
-            ExerciseQuestions.objects.filter(exercise=exercise).delete()
-            self.generate_new_questions(exercise.lesson, exercise)
-
-        with transaction.atomic():
-            exercise_score, created = ExerciseScores.objects.update_or_create(
-                exercise_id=exercise,
-                student=student,
-                defaults={
-                    'score': score,
-                    'totalQuestions': total_questions,
-                    'feedback': feedback
-                }
-            )
-
-            if not created:
-                exercise_score.correct_questions.clear()
-
-            for question_id in answers:
-                if answers[question_id] == correct_answers_dict.get(str(question_id)):
-                    correct_question = ExerciseQuestions.objects.get(id=question_id)
-                    exercise_score.correct_questions.add(correct_question)
-
-        if passed:
-            next_lesson = Lesson.objects.filter(syllabus=exercise.lesson.syllabus, order=exercise.lesson.order + 1).first()
-            if next_lesson:
-                next_lesson.available = True
-                next_lesson.save()
-
-        return Response({"score": score, "total_questions": total_questions, "feedback": feedback, "passed": passed})
-
 class PageViewSet(viewsets.ModelViewSet):
     queryset = Page.objects.all()
     serializer_class = PageSerializer
@@ -292,9 +187,211 @@ class PageViewSet(viewsets.ModelViewSet):
             return Response(status=status.HTTP_204_NO_CONTENT)
         else:
             return Response({"detail": "Invalid request method."}, status=status.HTTP_400_BAD_REQUEST)
+    
+class ExerciseViewSet(viewsets.ModelViewSet):
+    queryset = Exercise.objects.all()
+    serializer_class = ExerciseSerializer
+
+    @action(detail=True, methods=['post'], url_path='generate_questions')
+    def generate_questions(self, request, pk=None):
+        page_id = request.data.get('page_id')
+        lesson_id = request.data.get('lesson_id')
+        if not page_id or not lesson_id:
+            return Response({"error": "Page ID and Lesson ID are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            page = Page.objects.get(id=page_id)
+        except Page.DoesNotExist:
+            return Response({"error": "Page not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        content = page.content
+        content_title, content_content = self.extract_title_and_content(content)
+        if not content_title or not content_content:
+            return Response({"error": "Invalid content format"}, status=status.HTTP_400_BAD_REQUEST)
+
+        existing_exercise = Exercise.objects.filter(lesson_id=lesson_id).first()
+        if existing_exercise:
+            return Response({'status': 'existing exercise', 'exercise_id': existing_exercise.exerciseID}, status=status.HTTP_200_OK)
+
+        exercise = Exercise.objects.create(lesson_id=lesson_id, exerciseName=content_title)
+
+        env = environ.Env(DEBUG=(bool, False))
+        BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
+        client = OpenAI(api_key=env('OPENAI_API_KEY'))
+
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4-turbo",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are Preppy, BoardPrep's Engineering Companion and an excellent and critical engineer, tasked with creating exercise questions based on the lesson provided. In creating the exercise questions, you don't mind the student's capability, whether he or she is a beginner or an expert, instead, you must focus on creating questions that will help the student understand the lesson better and in varying difficulties."
+                    },
+                    {
+                        "role": "user", 
+                        "content": f"This course is about Integral Calculus. Based on this lesson: {content_content}\n\nGenerate 12 questions of varying difficulty to ensure the student can fully understand the lesson better. Each question must have 4 choices labeled as choiceA, choiceB, choiceC, and choiceD, with indicators placed before each choice as follows: A., B., C., and D., and indicate the correct choice with 'Correct Answer: ' followed by the correct choice label and text (e.g., 'Correct Answer: A. correct choice'). Ensure the question ends with a question mark, and each choice and the correct answer end with a period. Generate each question, choice, and correct choice in separate lines, and ensure none are left blank. Do not number the questions or indicate their difficulty."
+                    }
+                ]
+            )
+            questions_text = response.choices[0].message.content.strip()
+            questions = self.process_openai_response(questions_text)
+            for question_data in questions:
+                ExerciseQuestions.objects.create(
+                    exercise=exercise,
+                    question=question_data['question'],
+                    choiceA=question_data['choiceA'],
+                    choiceB=question_data['choiceB'],
+                    choiceC=question_data['choiceC'],
+                    choiceD=question_data['choiceD'],
+                    correctAnswer=question_data['correctAnswer']
+                )
+
+        except Exception as e:
+            return Response({"Error in generating questions": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return Response({'status': 'questions generated', 'exercise_id': exercise.exerciseID}, status=status.HTTP_201_CREATED)
+
+    @staticmethod
+    def extract_title_and_content(html_content):
+        soup = BeautifulSoup(html_content, 'html.parser')
+        title = soup.title.string if soup.title else 'No title'
+        content = soup.get_text()
+        return title, content
+    
+    @staticmethod
+    def process_openai_response(response_text):
+        questions = response_text.split('\n\n')
+        processed_questions = []
+
+        for question in questions:
+            if question:
+                lines = question.split('\n')
+                question_text = ""
+                choices = {}
+                correct_answer = ""
+
+                for line in lines:
+                    if line.endswith('?'):
+                        if line[1:3] == '. ':
+                            question_text = line[3:].strip()
+                        else:
+                            question_text = line.strip()
+                    elif line.startswith('A.'):
+                        choices['A'] = line[2:].strip().rstrip('.')
+                    elif line.startswith('B.'):
+                        choices['B'] = line[2:].strip().rstrip('.')
+                    elif line.startswith('C.'):
+                        choices['C'] = line[2:].strip().rstrip('.')
+                    elif line.startswith('D.'):
+                        choices['D'] = line[2:].strip().rstrip('.')
+                    elif line.startswith('Correct Answer:'):
+                        correct_answer_label = line.split(': ')[1].strip().rstrip('.')
+                        correct_answer = correct_answer_label.split('. ')[1] 
+
+                processed_questions.append({
+                    'question': question_text,
+                    'choiceA': choices.get('A', ''),
+                    'choiceB': choices.get('B', ''),
+                    'choiceC': choices.get('C', ''),
+                    'choiceD': choices.get('D', ''),
+                    'correctAnswer': correct_answer
+                })
+
+        return processed_questions
+
+    @action(detail=False, methods=['get'], url_path='(?P<lesson_id>[^/.]+)')
+    def by_lesson(self, request, lesson_id=None):
+        queryset = self.get_queryset().filter(lesson=lesson_id)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+class ExerciseQuestionsViewSet(viewsets.ModelViewSet):
+    queryset = ExerciseQuestions.objects.all()
+    serializer_class = ExerciseQuestionsSerializer
+    
+    @action(detail=False, methods=['get'], url_path='(?P<exercise_id>[^/.]+)')
+    def by_exercise(self, request, exercise_id=None):
+        queryset = self.get_queryset().filter(exercise=exercise_id)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+class ExerciseScoresViewSet(viewsets.ModelViewSet):
+    queryset = ExerciseScores.objects.all()
+    serializer_class = ExerciseScoresSerializer
+
+    @action(detail=False, methods=['get', 'post'], url_path='(?P<exercise_id>[^/.]+)')
+    def by_student_exercise(self, request, exercise_id=None):
+        page = request.query_params.get('page_id')
+        lesson = request.query_params.get('lesson_id')
+        print(page, lesson)
+
+        if request.method == 'POST':
+            user_name = request.data.get('student_id')
+            if not user_name:
+                return Response({'error': 'User name not provided.'}, status=400)
+            student = get_object_or_404(User, user_name=user_name)
+        else:
+            student = request.user
+
+        exercise = get_object_or_404(Exercise, exerciseID=exercise_id)
+        print(student, exercise_id)
+
+        if request.method == 'POST':
+            existing_exercisequestion = ExerciseQuestions.objects.filter(exercise=exercise).first()
+            existing_submission = ExerciseScores.objects.filter(exercise_id=exercise, student=student).first()
+            if existing_submission:
+                if existing_submission.score < 10:
+                    existing_submission.delete()
+                    existing_exercisequestion.delete()
+                    exercise.delete()
+                
+                serializer = self.get_serializer(existing_submission, data=request.data, partial=True)
+                if serializer.is_valid():
+                    serializer.save()
+                    return Response(serializer.data, status=status.HTTP_200_OK)
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                request.data['student'] = student.user_name
+                request.data['exercise'] = exercise.exerciseID
+
+                serializer = self.get_serializer(data=request.data)
+                if serializer.is_valid():
+                    serializer.save()
+                    return Response(serializer.data, status=status.HTTP_201_CREATED)
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        queryset = self.get_queryset().filter(student=student, exercise_id=exercise)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+class CorrectExerciseQuestionsViewSet(viewsets.ModelViewSet):
+    queryset = CorrectExerciseQuestions.objects.all()
+    serializer_class = ExerciseQuestionsSerializer
+
+    @action(detail=False, methods=['get'], url_path='(?P<exercise_id>[^/.]+)/(?P<student_id>[^/.]+)')
+    def by_student_exercise(self, request, exercise_id=None, student_id=None):
+        queryset = self.get_queryset().filter(exercise=exercise_id, student=student_id)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
 class FileUploadViewSet(viewsets.ModelViewSet):
     queryset = FileUpload.objects.all()
     serializer_class = FileUploadSerializer
+    parser_classes = [parsers.FormParser, parsers.MultiPartParser]
 
+    @action(detail=False, methods=['post'], url_path='upload')
+    @csrf_exempt
+    def upload_file(self, request):
+        file = request.FILES.get('file')
+        if not file:
+            return Response({'error': 'No file uploaded'}, status=status.HTTP_400_BAD_REQUEST)
 
+        azure_storage = AzureStorage()
+        filename = azure_storage.save(file.name, file)
+        file_url = azure_storage.url(filename)
+
+        file_instance = FileUpload(file=file_url, filename=filename)
+        file_instance.save()
+
+        return Response({'url': file_url}, status=status.HTTP_201_CREATED)

@@ -46,9 +46,11 @@ class UserViewSet(viewsets.ModelViewSet):
             },
             client_reference_id=user_name,
             success_url=request.build_absolute_uri(
-                f'{os.environ.get("GODADDY_FRONTEND")}/success'
+                #f'{os.environ.get("GODADDY_FRONTEND")}/success' -- for deployment (dont erase)
+                f'http://localhost:3000/success'
             ),
-            cancel_url=request.build_absolute_uri(f'{os.environ.get("GODADDY_FRONTEND")}/payment')
+            #cancel_url=request.build_absolute_uri(f'{os.environ.get("GODADDY_FRONTEND")}/payment') -- for deployment (dont erase)
+            cancel_url=request.build_absolute_uri('http://localhost:3000/payment')
         )
         return Response({'session_id': session.id})
 
@@ -72,7 +74,7 @@ def stripe_webhook(request):
     payload = request.body
     sig_header = request.META['HTTP_STRIPE_SIGNATURE']
     event = None
-    whsec_key = 'whsec_XoGexQArzaOtGi8A0Wter3hrF9H5BOkj'
+    whsec_key = 'whsec_f35732ecffbf816f2e3f8b3167fc5bb0b9104f1d27af2383c8400adea10423e0'
 
     try:
         event = stripe.Webhook.construct_event(

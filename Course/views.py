@@ -232,38 +232,47 @@ class ExerciseViewSet(viewsets.ModelViewSet):
         environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
         client = OpenAI(api_key=env('OPENAI_API_KEY'))
 
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4-turbo",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are Preppy, BoardPrep's Engineering Companion and an excellent and critical engineer, tasked with creating exercise questions based on the lesson provided. In creating the exercise questions, you don't mind the student's capability, whether he or she is a beginner or an expert, instead, you must focus on creating questions that will help the student understand the lesson better and in varying difficulties."
-                    },
-                    {
-                        "role": "user", 
-                        "content": f"This course is about {course_title}\n\n. Based on this lesson: {content_content}\n\nGenerate 15 questions of varying difficulty to ensure the student can fully understand the lesson better. Each question must be labeled as question. Each question must have 4 choices labeled as choiceA, choiceB, choiceC, and choiceD, with indicators placed before each choice as follows: A., B., C., and D., and indicate the correct choice with 'Correct Answer: ' followed by the correct choice label and text (e.g., 'Correct Answer: A. correct choice'). Ensure the question ends with a question mark, and each choice and the correct answer end with a period. Generate each question, choice, and correct choice in separate lines, and ensure none are left blank. Do not number the questions or indicate their difficulty."
-                    }
-                ]
+        #try:
+        response = client.chat.completions.create(
+            model="gpt-4-turbo",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are Preppy, BoardPrep's Engineering Companion and an excellent and critical engineer, tasked with creating exercise questions based on the lesson provided. In creating the exercise questions, you don't mind the student's capability, whether he or she is a beginner or an expert, instead, you must focus on creating questions that will help the student understand the lesson better and in varying difficulties."
+                },
+                {
+                    "role": "user", 
+                    "content": f"This course is about {course_title}\n\n. Based on this lesson: {content_content}\n\nGenerate 15 questions of varying difficulty to ensure the student can fully understand the lesson better. Each question must be labeled as question. Each question must have 4 choices labeled as choiceA, choiceB, choiceC, and choiceD, with indicators placed before each choice as follows: A., B., C., and D., and indicate the correct choice with 'Correct Answer: ' followed by the correct choice text only (e.g., 'Correct Answer: correct choice'). Ensure the question ends with a question mark, and each choice ends with a period. Generate each question, choice, and correct choice in separate lines, and ensure none are left blank. Do not number the questions or indicate their difficulty."
+                }
+            ]
+        )
+        questions_text = response.choices[0].message.content.strip()
+        print('1' + questions_text)
+        if('*' in questions_text):
+            questions_text = questions_text.replace('*', '')
+        if('.' in questions_text):
+            questions_text = questions_text.replace('.', '')
+        if('\( ' in questions_text):    
+            questions_text = questions_text.replace('\( ', '')
+        if('\)' in questions_text):
+            questions_text = questions_text.replace(' \)', '')
+        print('shi:' +  questions_text)
+        questions = self.process_openai_response(questions_text)
+        for question_data in questions:
+            ExerciseQuestions.objects.create(
+                exercise=exercise,
+                question=question_data['question'],
+                choiceA=question_data['choiceA'],
+                choiceB=question_data['choiceB'],
+                choiceC=question_data['choiceC'],
+                choiceD=question_data['choiceD'],
+                correctAnswer=question_data['correctAnswer'],
+                student=student,
             )
-            questions_text = response.choices[0].message.content.strip()
-            questions = self.process_openai_response(questions_text)
-            for question_data in questions:
-                ExerciseQuestions.objects.create(
-                    exercise=exercise,
-                    question=question_data['question'],
-                    choiceA=question_data['choiceA'],
-                    choiceB=question_data['choiceB'],
-                    choiceC=question_data['choiceC'],
-                    choiceD=question_data['choiceD'],
-                    correctAnswer=question_data['correctAnswer'],
-                    student=student,
-                )
-
-        except Exception as e:
-            return Response({"Error in generating questions": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         return Response({'status': 'questions generated', 'exercise_id': exercise.exerciseID}, status=status.HTTP_201_CREATED)
+        #except Exception as e:
+        return Response({"Error in generating questions": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @staticmethod
     def extract_title_and_content(html_content):
@@ -285,23 +294,59 @@ class ExerciseViewSet(viewsets.ModelViewSet):
                 correct_answer = ""
 
                 for line in lines:
-                    if line.endswith('?'):
-                        if line.startswith('Question:'):
+                    if ('?' in line or line.endswith(':')) or (line.startswith('Question:') or line.startswith('question:')):
+                        if line.startswith('Question:') or line.startswith('question:'):
                             question_text = line[len('Question:'):].strip()
-                        elif line[1:3] == '. ':
-                            question_text = line[3:].strip()
-                    elif line.startswith('A.'):
-                        choices['A'] = line[2:].strip().rstrip('.')
-                    elif line.startswith('B.'):
-                        choices['B'] = line[2:].strip().rstrip('.')
-                    elif line.startswith('C.'):
-                        choices['C'] = line[2:].strip().rstrip('.')
-                    elif line.startswith('D.'):
-                        choices['D'] = line[2:].strip().rstrip('.')
-                    elif line.startswith('Correct Answer:'):
-                        correct_answer_label = line.split(': ')[1].strip().rstrip('.')
-                        correct_answer = correct_answer_label.split('. ')[1] 
-
+                            print('typashi:' + question_text)
+                        elif '?' in line:
+                            question_text = line
+                    elif 'Correct Answer:' not in line:
+                        if line.startswith('A'):
+                            choices['A'] = line[1:].strip() 
+                        if line.startswith('B'):
+                            choices['B'] = line[1:].strip()
+                        if line.startswith('C'):
+                            choices['C'] = line[1:].strip()
+                        if line.startswith('D'):
+                            choices['D'] = line[1:].strip()
+                        if line.startswith('choiceA:'):
+                            choices['A'] = line[len('choiceA:'):].strip()
+                        if line.startswith('choiceB:'):
+                            choices['B'] = line[len('choiceB:'):].strip()
+                        if line.startswith('choiceC:'):
+                            choices['C'] = line[len('choiceC:'):].strip()
+                        if line.startswith('choiceD:'):
+                            choices['D'] = line[len('choiceD:'):].strip()
+                        if line.startswith('ChoiceA:'):
+                            choices['A'] = line[len('ChoiceA:'):].strip()
+                        if line.startswith('ChoiceB:'):
+                            choices['B'] = line[len('ChoiceB:'):].strip()
+                        if line.startswith('ChoiceC:'):
+                            choices['C'] = line[len('ChoiceC:'):].strip() 
+                        if line.startswith('ChoiceD:'):
+                            choices['D'] = line[len('ChoiceD:'):].strip()
+                        if line.startswith('**ChoiceA:**'):
+                            choices['A'] = line[len('**ChoiceA:**'):].strip()
+                        if line.startswith('**ChoiceB:**'):
+                            choices['B'] = line[len('**ChoiceB:**'):].strip()
+                        if line.startswith('**ChoiceC:**'):
+                            choices['C'] = line[len('**ChoiceC:**'):].strip()
+                        if line.startswith('**ChoiceD:**'):
+                            choices['D'] = line[len('**ChoiceD:**'):].strip()
+                    elif 'Correct Answer:' in line:
+                        if line.startswith('Correct Answer:'):
+                            print('line:' + line)
+                            correct_answer = line.split(': ')[1].strip()
+                            if correct_answer.startswith('A '):
+                                correct_answer = correct_answer[2:]
+                            if correct_answer.startswith('B '):
+                                correct_answer = correct_answer[2:]
+                            if correct_answer.startswith('C '):
+                                correct_answer = correct_answer[2:]
+                            if correct_answer.startswith('D '):
+                                correct_answer = correct_answer[2:]
+                            print('correct:' + correct_answer)
+                        
                 processed_questions.append({
                     'question': question_text,
                     'choiceA': choices.get('A', ''),

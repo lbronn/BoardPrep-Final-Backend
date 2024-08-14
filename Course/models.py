@@ -50,6 +50,7 @@ class FileUpload(models.Model):
 
 class Exercise(models.Model):
     lesson = models.ForeignKey(Lesson, on_delete=models.CASCADE, blank=True, null=True)
+    student = models.ForeignKey('User.Student', on_delete=models.CASCADE, related_name='student_exercises', blank=True, null=True)
     exerciseID = models.BigAutoField(primary_key=True)
     exerciseName = models.CharField(max_length=200)
     
@@ -65,6 +66,7 @@ class ExerciseQuestions(models.Model):
     choiceD = models.CharField(max_length=255, verbose_name="D")
     subject = models.CharField(max_length=255)
     correctAnswer = models.CharField(max_length=255, verbose_name="Correct Answer")
+    student = models.ForeignKey('User.Student', on_delete=models.CASCADE, related_name='student_exercisequestions', blank=True, null=True)
     
     def __str__(self):
         return f"{self.question} - {self.subject}"
@@ -82,6 +84,7 @@ class ExerciseScores(models.Model):
         through='CorrectExerciseQuestions',
         related_name='correct_in_exercises'
     )
+    hasFinished = models.BooleanField(default=False)
     
     class Meta:
         unique_together = ['exercise_id', 'student']

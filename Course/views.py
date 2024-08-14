@@ -196,24 +196,36 @@ class ExerciseViewSet(viewsets.ModelViewSet):
     def generate_questions(self, request, pk=None):
         page_id = request.data.get('page_id')
         lesson_id = request.data.get('lesson_id')
-        if not page_id or not lesson_id:
-            return Response({"error": "Page ID and Lesson ID are required"}, status=status.HTTP_400_BAD_REQUEST)
+        course_id = request.data.get('course_id')
+        student_id = request.data.get('student_id')
+        print(page_id, lesson_id, course_id, student_id)
+        if not page_id or not lesson_id or not student_id:
+            return Response({"error": "Page ID, Lesson ID, and Student ID are required"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             page = Page.objects.get(id=page_id)
+            course = Course.objects.get(course_id=course_id)
+            student = get_object_or_404(Student, user_name=student_id)
         except Page.DoesNotExist:
             return Response({"error": "Page not found"}, status=status.HTTP_404_NOT_FOUND)
+        except Course.DoesNotExist:
+            return Response({"error": "Course not found"}, status=status.HTTP_404_NOT_FOUND)
 
+        course_title = course.course_title
+        print(course_title)
         content = page.content
         content_title, content_content = self.extract_title_and_content(content)
+        print(content_content)
         if not content_title or not content_content:
             return Response({"error": "Invalid content format"}, status=status.HTTP_400_BAD_REQUEST)
+        if not course_title:
+            return Response({"error": "Course title not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        existing_exercise = Exercise.objects.filter(lesson_id=lesson_id).first()
+        existing_exercise = Exercise.objects.filter(lesson_id=lesson_id, student_id=student_id).first()
         if existing_exercise:
             return Response({'status': 'existing exercise', 'exercise_id': existing_exercise.exerciseID}, status=status.HTTP_200_OK)
 
-        exercise = Exercise.objects.create(lesson_id=lesson_id, exerciseName=content_title)
+        exercise = Exercise.objects.create(lesson_id=lesson_id, student_id=student_id, exerciseName=content_title)
 
         env = environ.Env(DEBUG=(bool, False))
         BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -230,7 +242,7 @@ class ExerciseViewSet(viewsets.ModelViewSet):
                     },
                     {
                         "role": "user", 
-                        "content": f"This course is about Integral Calculus. Based on this lesson: {content_content}\n\nGenerate 12 questions of varying difficulty to ensure the student can fully understand the lesson better. Each question must have 4 choices labeled as choiceA, choiceB, choiceC, and choiceD, with indicators placed before each choice as follows: A., B., C., and D., and indicate the correct choice with 'Correct Answer: ' followed by the correct choice label and text (e.g., 'Correct Answer: A. correct choice'). Ensure the question ends with a question mark, and each choice and the correct answer end with a period. Generate each question, choice, and correct choice in separate lines, and ensure none are left blank. Do not number the questions or indicate their difficulty."
+                        "content": f"This course is about {course_title}\n\n. Based on this lesson: {content_content}\n\nGenerate 15 questions of varying difficulty to ensure the student can fully understand the lesson better. Each question must be labeled as question. Each question must have 4 choices labeled as choiceA, choiceB, choiceC, and choiceD, with indicators placed before each choice as follows: A., B., C., and D., and indicate the correct choice with 'Correct Answer: ' followed by the correct choice label and text (e.g., 'Correct Answer: A. correct choice'). Ensure the question ends with a question mark, and each choice and the correct answer end with a period. Generate each question, choice, and correct choice in separate lines, and ensure none are left blank. Do not number the questions or indicate their difficulty."
                     }
                 ]
             )
@@ -244,7 +256,8 @@ class ExerciseViewSet(viewsets.ModelViewSet):
                     choiceB=question_data['choiceB'],
                     choiceC=question_data['choiceC'],
                     choiceD=question_data['choiceD'],
-                    correctAnswer=question_data['correctAnswer']
+                    correctAnswer=question_data['correctAnswer'],
+                    student=student,
                 )
 
         except Exception as e:
@@ -273,10 +286,10 @@ class ExerciseViewSet(viewsets.ModelViewSet):
 
                 for line in lines:
                     if line.endswith('?'):
-                        if line[1:3] == '. ':
+                        if line.startswith('Question:'):
+                            question_text = line[len('Question:'):].strip()
+                        elif line[1:3] == '. ':
                             question_text = line[3:].strip()
-                        else:
-                            question_text = line.strip()
                     elif line.startswith('A.'):
                         choices['A'] = line[2:].strip().rstrip('.')
                     elif line.startswith('B.'):
@@ -300,9 +313,18 @@ class ExerciseViewSet(viewsets.ModelViewSet):
 
         return processed_questions
 
-    @action(detail=False, methods=['get'], url_path='(?P<lesson_id>[^/.]+)')
+    @action(detail=False, methods=['get', 'delete'], url_path='(?P<lesson_id>[^/.]+)')
     def by_lesson(self, request, lesson_id=None):
-        queryset = self.get_queryset().filter(lesson=lesson_id)
+        student_id = request.query_params.get('student_id')
+        print(student_id)
+        if not student_id:
+            return Response({"error": "(1) Student ID is required."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        queryset = self.get_queryset().filter(lesson_id=lesson_id, student_id=student_id)
+        if request.method == 'DELETE':
+            queryset.delete()
+            return Response({"message": "Exercise deleted successfully for student and lesson."}, status=status.HTTP_204_NO_CONTENT)
+
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
@@ -310,9 +332,18 @@ class ExerciseQuestionsViewSet(viewsets.ModelViewSet):
     queryset = ExerciseQuestions.objects.all()
     serializer_class = ExerciseQuestionsSerializer
     
-    @action(detail=False, methods=['get'], url_path='(?P<exercise_id>[^/.]+)')
+    @action(detail=False, methods=['get', 'delete'], url_path='(?P<exercise_id>[^/.]+)')
     def by_exercise(self, request, exercise_id=None):
-        queryset = self.get_queryset().filter(exercise=exercise_id)
+        student_id = request.query_params.get('student_id')
+        print(student_id)
+        if not student_id:
+            return Response({"error": "(2) Student ID is required."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        queryset = self.get_queryset().filter(exercise_id=exercise_id, student_id=student_id)
+        if request.method == 'DELETE':
+            queryset.delete()
+            return Response({"message": "Exercise questions deleted successfully for student and exercise."}, status=status.HTTP_204_NO_CONTENT)
+        
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
@@ -338,23 +369,20 @@ class ExerciseScoresViewSet(viewsets.ModelViewSet):
         print(student, exercise_id)
 
         if request.method == 'POST':
-            existing_exercisequestion = ExerciseQuestions.objects.filter(exercise=exercise).first()
-            existing_submission = ExerciseScores.objects.filter(exercise_id=exercise, student=student).first()
-            if existing_submission:
-                if existing_submission.score < 10:
-                    existing_submission.delete()
-                    existing_exercisequestion.delete()
-                    exercise.delete()
-                
-                serializer = self.get_serializer(existing_submission, data=request.data, partial=True)
-                if serializer.is_valid():
-                    serializer.save()
-                    return Response(serializer.data, status=status.HTTP_200_OK)
-                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            score = request.data.get('score', 0)
+            total_questions = request.data.get('totalQuestions', 0)
+            passing_score = 0.8 * total_questions 
+
+            has_finished = float(score) >= passing_score
+            existing_score = ExerciseScores.objects.filter(student=student, exercise_id=exercise).first()
+            if existing_score:
+                existing_score.score = score
+                existing_score.hasFinished = has_finished
+                existing_score.save()
             else:
                 request.data['student'] = student.user_name
                 request.data['exercise'] = exercise.exerciseID
-
+                request.data['hasFinished'] = has_finished
                 serializer = self.get_serializer(data=request.data)
                 if serializer.is_valid():
                     serializer.save()
@@ -363,6 +391,10 @@ class ExerciseScoresViewSet(viewsets.ModelViewSet):
 
         queryset = self.get_queryset().filter(student=student, exercise_id=exercise)
         serializer = self.get_serializer(queryset, many=True)
+        if request.method == 'DELETE':
+            queryset.delete()
+            return Response({"message": "Exercise scores deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
+        
         return Response(serializer.data)
 
 class CorrectExerciseQuestionsViewSet(viewsets.ModelViewSet):

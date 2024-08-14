@@ -39,6 +39,7 @@ class ExerciseScoresSerializer(serializers.ModelSerializer):
             'studentName',
             'feedback',
             'correctquestions',
+            'hasFinished',
         )
 
     def to_representation(self, instance):
